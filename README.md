@@ -14,8 +14,21 @@ Downstream Tasks
 
 ## Dataset
 
+1. Environment Sound Classification Dataset (ESC-50)
+
+
+2. Sound Event Detection Dataset (DESEC)
+
 
 ## Training
 
-## Eval
+
+1. Environment Sound Classification
+
+ - before running the code, configure your config file for training. 
+ - fold can be set from [1, 2, 3, 4, 5]
+ - bitrate can be set from [1.5, 3, 6, 12, 24]
+
+python beats_trainer.py --configs $YOUR_CONFIG$ --fold $YOUR_FOLD$ --bitrate $YOUR_BITRATE$
+
 

@@ -1,0 +1,36 @@
+data_dir : "/data/ESC-50-master/audio" # directory to the audio file dataset
+annotation_dir : "/data/ESC-50-master/meta/esc50.csv" # directory to the audio file annotation 
+save_model_dir : "/data/ckpts/ESC-50/res_post_only/post_percept_rev_bitrate6/" # directory to save your model
+save_wav_dir : "/data/ESC-50-master/filter-outputs/post_percept_rev_bitrate6/" # directory to save filtered audio
+load_model_dir : "/data/ckpts/ESC-50/baseline/" # directory to load the baseline model from 
+seed : 42
+
+mode : train # choose from ['train', 'eval_only', 'sample']
+train_classifier : False # setting this as true will train the classifier layers, unfreeze with ' baseline.freeze_classifier : False '
+encodec : False # setting this as true will train the classifier layers with encodec-compressed outputs, unfreeze with ' baseline.freeze_classifier : False '
+filters : True # setting this as true will train only the filters
+return_wav : True # TODO:fix this for classification training
+
+baseline : 
+  model : beats
+  load_pretrained : "/data/ckpts/ESC-50/baseline/" # load pretrained classifier weights
+  freeze_baseline : True # do not change this unless you want to train BEATs baseline model!
+  freeze_encodec : True # do not change this unless you want to train encodec !
+  freeze_classifier : True # do not change this unless you want to train the classifiers!
+  bitrate : 6
+
+train :
+  epochs : 10
+  batch_size : 16
+  learning_rate : 1e-4
+  num_workers : 64
+  pre_blocks : 3 # number of blocks for pre-filter
+  post_blocks : 3 # number of blocks for post-filter
+
+data :
+  sr : 24000
+  augmentation : False
+
+log : 
+  wandb : True # if you want to log via wandb, login to wandb before setting this True
+  process_name : ESC50 
