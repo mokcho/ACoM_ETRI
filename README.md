@@ -29,6 +29,8 @@ Downstream Tasks
  - fold can be set from [1, 2, 3, 4, 5]
  - bitrate can be set from [1.5, 3, 6, 12, 24]
 
+```bash
 python beats_trainer.py --configs $YOUR_CONFIG$ --fold $YOUR_FOLD$ --bitrate $YOUR_BITRATE$
+```
 
 
