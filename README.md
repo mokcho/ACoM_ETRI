@@ -6,8 +6,10 @@ Question : How can we adapt Audio Codecs for machine perception, rather than hum
 ## To-Do's
 Methods
 - [x] implement naiive filtering layers
-- [ ] implement frame-wise ROI pre-filtering
-- [ ] implement frequency-wise ROI pre-filtering
+- [x] implement frame-wise ROI pre-filtering
+- [x] implement frequency-wise ROI pre-filtering
+- [ ] save best-mask results as axis, percentage, region (frames, freqs)
+- [ ] train lightweight neural network for prediction
       
 Downstream Tasks
 - [x] ESC-50
