@@ -1,5 +1,5 @@
 # Audio Coding for Machines
-ETRI project led by Jinju Kim, Seungho Kwon
+ETRI project by Jinju Kim (project lead), Seungho Kwon
 
 Question : How can we adapt Audio Codecs for machine perception, rather than human perception for machine tasks?
 
