@@ -5,6 +5,9 @@ import wandb
 
 from baselines.beats.BEATs import BEATs, BEATsConfig
 from baselines.beats.Tokenizers import TokenizersConfig, Tokenizers
+
+from baselines.ast.src.models.ast_models import ASTModel
+
 from encodec.model import EncodecModel
 
 from networks.roi_transformer import ROIConvTransformerAutoencoder
@@ -12,6 +15,124 @@ from networks.post_encodec import *
 
 
 class BaseClassifier(nn.Module):
+    def __init__(self, cfgs, label2id):
+        super().__init__()  
+        self.cfgs = cfgs
+        
+        if self.cfgs.baseline.model.lower() == 'beats':
+            self.model_ckpt = torch.load('/data/BEATs/BEATs_iter3_plus_AS20K_finetuned_on_AS2M_cpt1.pt')
+            self.model_ckpt['cfg']['finetuned_model'] = False
+            self.baseline = BEATs(BEATsConfig(self.model_ckpt['cfg']))
+            if not self.cfgs.baseline.freeze_classifier:
+                print("Loading BEATs model from /data/BEATs/BEATs_iter3_plus_AS20K_finetuned_on_AS2M_cpt1.pt")
+                self.baseline.load_state_dict(self.model_ckpt['model'], strict=False)
+            
+            self.embed_dim = self.baseline.cfg.encoder_embed_dim
+            
+        elif self.cfgs.baseline.model.lower() == 'ast':
+            
+            print("Loading AST model from repo...")
+            
+            # Mel-spectrogram transform (AST uses this)
+            self.mel_trans = torchaudio.transforms.MelSpectrogram(
+                sample_rate=16000,
+                n_fft=1024,
+                hop_length=160,
+                n_mels=128
+            )
+            
+            # Initialize AST model
+            self.baseline = ASTModel(
+                label_dim=527,
+                input_tdim=512,  # ← ESC-50 uses 512, not 1024!
+                input_fdim=128,
+                fstride=10,
+                tstride=10,
+                audioset_pretrain=True  # ← Loads AudioSet, auto-resizes pos_embed
+            )
+            
+            # Load checkpoint if provided
+            if hasattr(self.cfgs.baseline, 'ckpt_path') and self.cfgs.baseline.ckpt_path:
+                print(f"Loading AST model from {self.cfgs.baseline.ckpt_path}")
+                ckpt = torch.load(self.cfgs.baseline.ckpt_path)
+                state_dict = ckpt.get('model_state_dict', ckpt)
+                self.baseline.load_state_dict(state_dict, strict=False)
+                
+            #Remove AST built in classifier
+            self.baseline.mlp_head = nn.Identity()  
+            
+            self.embed_dim = 768  # AST uses ViT-Base which has 768-dim embeddings
+            
+        else:
+            raise ValueError(f"BASELINE {self.cfgs.baseline.model} is NOT SUPPORTED")
+            
+        if self.cfgs.baseline.freeze_baseline:
+            print(f"Freezing {self.cfgs.baseline.model}")
+            for param in self.baseline.parameters():
+                param.requires_grad = False
+        else:
+            print("WARNING: baseline is training")
+            if self.cfgs.baseline.model.lower() == 'beats':
+                tokenizer_ckpt = torch.load('/data/BEATs/Tokenizer_iter3_plus_AS20K.pt')
+                tokenizers_cfg = TokenizersConfig(tokenizer_ckpt['cfg'])
+                self.tokenizer = Tokenizers(tokenizers_cfg)
+                self.tokenizer.load_state_dict(tokenizer_ckpt['model'])
+        
+        num_classes = len(label2id)
+
+        # Build classifier head
+
+        self.classifier = nn.Sequential(
+            nn.Linear(self.embed_dim, 256),
+            nn.Dropout(0.2),
+            nn.ReLU(),
+            nn.Linear(256, num_classes)
+        )
+
+    def forward(self, x, padding_mask=None, eval_mode=None): 
+        
+        if self.cfgs.baseline.model.lower() == 'beats':
+            # BEATs forward pass
+            x = x.squeeze(1)  # [B, T]
+            features = self.baseline.extract_features(x, padding_mask=padding_mask)[0]
+            processed_input = x
+            
+        elif self.cfgs.baseline.model.lower() == 'ast':
+            if x.dim() == 3:
+                x = x.squeeze(1)
+            
+            target_length = int(16000 * 5.12)
+            if x.shape[-1] < target_length:
+                x = F.pad(x, (0, target_length - x.shape[-1]))
+            else:
+                x = x[:, :target_length]
+            
+            # Mel-spectrogram
+            mel = self.mel_trans(x)
+            log_mel = (mel + 1e-6).log()
+            
+            # NORMALIZE with ESC stats
+            log_mel = (log_mel + 6.6268077) / 5.358466
+            
+            log_mel = log_mel.transpose(1, 2)  # [B, T, 128]
+            
+            features = self.baseline(log_mel)
+            processed_input = log_mel
+        
+
+        logits = self.classifier(features)
+        
+        # Handle different feature shapes
+        if logits.dim() > 2:  # [B, T, num_classes]
+            logits = logits.mean(dim=1)  # Average over time -> [B, num_classes]
+        
+        output = logits
+
+
+        return output, processed_input, features, None
+
+
+class BaseClassifier_dep(nn.Module):
     def __init__(self, cfgs, label2id) :#frontend, beats_model, num_classes, freeze_beats=True):
         super().__init__()  
         self.cfgs = cfgs
@@ -48,11 +169,11 @@ class BaseClassifier(nn.Module):
                 
             )
 
-    def forward(self, x, eval_mode=None): 
+    def forward(self, x, padding_mask=None, eval_mode=None): 
         
         # print(x.shape) # [B, 1, T]
         x = x.squeeze(1)
-        features = self.baseline.extract_features(x, padding_mask=None)[0] 
+        features = self.baseline.extract_features(x, padding_mask=padding_mask)[0] 
         
         
         if self.cfgs.train_classifier :  
@@ -99,19 +220,20 @@ class EnCodecClassifier(BaseClassifier) :
 
 
         x = self.encodec(x) #input should be [B, 1, T]
-        x = x.squeeze(1) # [B, T]
+        return super().forward(x, padding_mask=None, eval_mode=eval_mode)
+        # x = x.squeeze(1) # [B, T]
 
-        features = self.baseline.extract_features(x, padding_mask=None)[0]  # [B, T, D]
+        # features = self.baseline.extract_features(x, padding_mask=None)[0]  # [B, T, D]
 
-        if self.cfgs.train_classifier:
-            logits = self.classifier(features)   # [B, T, C]
-            logits = logits.mean(dim=1)         # [B, C]
+        # if self.cfgs.train_classifier:
+        #     logits = self.classifier(features)   # [B, T, C]
+        #     logits = logits.mean(dim=1)         # [B, C]
             
 
-            return logits, x, features, None
+        #     return logits, x, features, None
         
-        else:
-            return features, x
+        # else:
+        #     return features, x
 
 class FilterClassifier(EnCodecClassifier) :
     
@@ -345,3 +467,57 @@ class SNFilterClassifier(EnCodecClassifier) :
         
         else : 
             print("NOT SUPPORTED YET")
+            
+
+class SoundStreamClassifier(BaseClassifier):
+    def __init__(self, cfgs, label2id):
+        super().__init__(cfgs, label2id)
+        
+        # For 16kHz: bitrate = (16000/320) × num_quantizers × 10 = 500 × num_quantizers
+        # Map EnCodec bitrates to num_quantizers for 16kHz
+        bitrate_to_quantizers_16k = {
+            1.5: 3,   # 1.5 kbps
+            3.0: 6,   # 3.0 kbps
+            6.0: 12,  # 6.0 kbps
+            12.0: 24, # 12.0 kbps
+            24.0: 48  # 24.0 kbps (might be too high, check max in audiolm-pytorch)
+        }
+        
+        num_quantizers = 12  # default for ~6kbps
+        if self.cfgs.baseline.bitrate is not None:
+            self.bitrate = self.cfgs.baseline.bitrate
+            num_quantizers = bitrate_to_quantizers_16k.get(self.bitrate, 12)
+            actual_bitrate = (16000/320) * num_quantizers * 10 / 1000  # in kbps
+            print(f"setting soundstream to ~{actual_bitrate:.1f} kbps ({num_quantizers} quantizers)")
+        
+        self.soundstream = SoundStream(
+            codebook_size=1024,
+            rq_num_quantizers=num_quantizers,
+            target_sample_hz=16000,  # changed to 16kHz
+            rq_groups=2,
+        )
+        
+        print("freezing soundstream")
+        for param in self.soundstream.parameters():
+            param.requires_grad = False
+                
+        self.soundstream.train()
+        
+        if self.cfgs.baseline.freeze_classifier:
+            print("freezing classifier")
+            for param in self.classifier.parameters():
+                param.requires_grad = False
+        
+    def forward(self, x, use_post_filter=True, eval_mode=False):
+        # x: [B, 1, T]
+        x_recon, indices = self.soundstream(x, return_encoded=True)
+        x_recon = x_recon.squeeze(1)  # [B, T]
+        
+        features = self.baseline.extract_features(x_recon, padding_mask=None)[0]
+        
+        if self.cfgs.train_classifier:
+            logits = self.classifier(features)
+            logits = logits.mean(dim=1)
+            return logits, x_recon, features, None
+        else:
+            return features, x_recon
