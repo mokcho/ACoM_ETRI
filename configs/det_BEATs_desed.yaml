@@ -1,0 +1,47 @@
+data_dir : "/data/dcase/dataset/audio/train"
+annotation_dir : "/data/dcase/dataset/metadata/train/audioset_strong_train.tsv"
+save_model_dir : "/data/ckpts/desed/baseline_16K/"
+save_wav_dir : "/data/ckpts/desed/baseline_16K/"
+checkpoint_dir : "/data/ckpts/desed/baseline_16K/"
+
+seed : 328
+
+mode : weak
+train_classifier : True
+encodec : False
+filters : False
+return_wav : False # fix this for classification training
+
+baseline :
+  model : "beats"
+  load_pretrained : False #"/data/ckpts/desed/AST_baseline_16K/best_weak.pt" # "/data/ckpts/ESC-50/baseline_16K/fold_1/latest.pt" #loads from original pretrained BEATs ckpt
+  freeze_baseline : True
+  freeze_classifier : True
+  bitrate : 24.0
+
+train :
+  epochs : 10
+  batch_size : 64
+  learning_rate : 5e-3
+  num_workers : 32
+  weight_decay : 1e-6
+
+data :
+  sr : 16000
+  test_fold : 1
+  augmentation : False
+  n_frames: 250
+  fs : 16000
+  feats_frame_len: 0.025
+  feats_frame_hop: 0.010
+  net_pooling: 4
+  audio_max_len: 10
+  classes: ['Alarm_bell_ringing', 'Blender', 'Cat', 'Dishes', 'Dog',
+                       'Electric_shaver_toothbrush', 'Frying', 'Running_water',
+                       'Speech', 'Vacuum_cleaner']
+  post_blocks: 6
+  pre_blocks: 3
+
+log :
+  wandb : False
+  process_name : DESED-Baseline

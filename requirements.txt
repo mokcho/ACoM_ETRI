@@ -8,3 +8,5 @@ opuslib
 # From AST library
 wget
 timm==0.4.5
+# For Sound Event Detection
+sedeval
