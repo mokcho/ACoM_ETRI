@@ -2,7 +2,7 @@ data_dir : "/data/ESC-50-master/audio" # directory to the audio file dataset
 annotation_dir : "/data/ESC-50-master/meta/esc50.csv" # directory to the audio file annotation 
 save_model_dir : "/data/ckpts/ESC-50/AST_baseline_16K/" # directory to save your model
 save_wav_dir : "/data/ESC-50-master/AST_baseline_16K/" # directory to save filtered audio
-load_model_dir : "/data/ckpts/ESC-50/baseline_16K/" # directory to load the baseline model from 
+load_model_dir : "/data/ckpts/ESC-50/AST_baseline_16K/" # directory to load the baseline model from 
 seed : 42
 
 mode : train # choose from ['train', 'eval_only', 'sample']
@@ -20,7 +20,7 @@ baseline :
   bitrate : 24.0
 
 train :
-  epochs : 20
+  epochs : 10
   batch_size : 48
   learning_rate : 1e-4
   num_workers : 64
