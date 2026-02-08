@@ -1,0 +1,34 @@
+data_dir : "/data/ESC-50-master/opus-outputs_16K_6kbps/" # directory to the audio file dataset
+annotation_dir : "/data/ESC-50-master/meta/esc50.csv" # directory to the audio file annotation 
+save_model_dir : "/data/ckpts/ESC-50/AST_baseline_16K/" # directory to save your model
+save_wav_dir : "/data/ESC-50-master/AST_baseline_16K/" # directory to save filtered audio
+load_model_dir : "/data/ckpts/ESC-50/AST_baseline_16K/" # directory to load the baseline model from 
+seed : 42
+
+mode : eval_only # choose from ['train', 'eval_only', 'sample']
+train_classifier : True # setting this as true will train the classifier layers, unfreeze with ' baseline.freeze_classifier : False '
+encodec : False # setting this as true will train the classifier layers with encodec-compressed outputs, unfreeze with ' baseline.freeze_classifier : False '
+filters : False # setting this as true will train only the filters
+return_wav : False # TODO:fix this for classification training
+
+baseline : 
+  model : ast
+  load_pretrained : "/data/ckpts/ESC-50/AST_baseline_16K/" # load pretrained classifier weights
+  freeze_baseline : True # do not change this unless you want to train BEATs baseline model!
+  freeze_encodec : True # do not change this unless you want to train encodec !
+  freeze_classifier : False # do not change this unless you want to train the classifiers!
+  bitrate : 6.0
+
+train :
+  epochs : 10
+  batch_size : 48
+  learning_rate : 1e-4
+  num_workers : 64
+
+data :
+  sr : 16000
+  augmentation : False
+
+log : 
+  wandb : True # if you want to log via wandb, login to wandb before setting this True
+  process_name : ESC50_Opus_baseline
