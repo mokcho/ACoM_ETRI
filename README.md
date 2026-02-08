@@ -33,7 +33,7 @@ To prepare datasets, simply use the following script.
 
     Prepare your dataset manually from [DCASE 2024 Official Website](https://dcase.community/challenge2024/task-sound-event-detection-with-heterogeneous-training-dataset-and-potentially-missing-labels)
 
-## Codecs
+## Codecs (WIP)
 
 1. EnCodec
 
@@ -43,7 +43,7 @@ To prepare datasets, simply use the following script.
     apt-get update && apt-get install -y libopus0 libopus-dev
     ```
 
-## Audio Models
+## Audio Models (WIP)
 
 You can download both models using following script. Follow manual download below if you encounter any problems. If all fails - you could use huggingface instead of a downloaded checkpoint.
 
@@ -70,6 +70,14 @@ You can download both models using following script. Follow manual download belo
 
     ```bash
     python beats_trainer.py --configs $YOUR_CONFIG$ --fold $YOUR_FOLD$ --bitrate $YOUR_BITRATE$
+    ```
+
+- Training a Classifier
+
+currently runs with AST
+
+    ```bash
+    scripts/cls_train.sh
     ```
 
 2. Sound Event Detection (DESED)
