@@ -1,0 +1,10 @@
+scikit-learn
+pandas
+wandb
+omegaconf
+einops
+transformers
+opuslib
+# From AST library
+wget
+timm==0.4.5
