@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import average_precision_score, accuracy_score, f1_score
 from sklearn.preprocessing import label_binarize
 
-from baselines.pipelines import *
+from baselines.sound_classification.pipelines import *
 from data import *
 
 
@@ -88,7 +88,7 @@ class BeatsTrainer:
                 cfgs=cfg,
                 label2id= self.train_dataset.label2id
                 ).to(self.device)
-        
+            
         else : 
             print("baseline training")
             self.pipeline = BaseClassifier(
@@ -212,9 +212,10 @@ class BeatsTrainer:
                     
                 self.optimizer.zero_grad()
 
-                perception_loss = F.mse_loss(features, orig_features)  # x is the filtered waveform
-                loss = (1-self.cfg.train.percep_lambda) * self.criterion(logits, labels) + self.cfg.train.percep_lambda * perception_loss
-
+                # perception_loss = F.mse_loss(features, orig_features)  # x is the filtered waveform
+                # loss = (1-self.cfg.train.percep_lambda) * self.criterion(logits, labels) + self.cfg.train.percep_lambda * perception_loss
+                loss = self.criterion(logits, labels)
+                
                 loss.backward()
                 self.optimizer.step()
 
@@ -223,7 +224,10 @@ class BeatsTrainer:
                 
                 running_loss += loss.item()
                 progress_bar.set_postfix(loss=f"{running_loss / (i+1):.4f}")
-                wandb.log({"train/loss": running_loss / (i+1), "perception_loss": perception_loss.item(), "steps": i})
+                if self.cfg.log.wandb : 
+                    wandb.log({"train/loss": running_loss / (i+1), 
+                           #"perception_loss": perception_loss.item(), 
+                           "steps": i})
               
             # print(f"Epoch {self.cur_epoch + 1} - Train Loss: {running_loss / len(self.train_loader):.4f}")
             
@@ -263,12 +267,13 @@ class BeatsTrainer:
             print(f"Accuracy: {acc:.4f}, F1 (macro): {f1_macro:.4f}, F1 (micro): {f1_micro:.4f}")
             
             
-            wandb.log({
-                "train/f1_macro": f1_macro,
-                "train/f1_micro": f1_micro,
-                "epoch": self.cur_epoch
-            })
-            
+            if self.cfg.log.wandb : 
+                wandb.log({
+                    "train/f1_macro": f1_macro,
+                    "train/f1_micro": f1_micro,
+                    "epoch": self.cur_epoch
+                })
+                
             
             self.cur_epoch += 1
             self.save_checkpoint(name='latest')
@@ -310,8 +315,8 @@ class BeatsTrainer:
 
                 loss = self.criterion(logits, labels)
                     
-                if self.cur_epoch == self.cfg.train.epochs or self.cfg.return_wav and self.cfg.mode=='only_eval': 
-                    self.save_batch_to_wav(wav, filenames)
+                # if self.cur_epoch == self.cfg.train.epochs or self.cfg.return_wav and self.cfg.mode=='only_eval': 
+                #     self.save_batch_to_wav(wav, filenames)
                 
                 
                 running_loss = loss.item()
@@ -360,13 +365,14 @@ class BeatsTrainer:
         print(f"Accuracy: {acc:.4f}, F1 (macro): {f1_macro:.4f}, F1 (micro): {f1_micro:.4f}, Validation Loss: {total_loss / len(self.val_loader):.4f}")
         
         
-        wandb.log({
-            "val/loss": total_loss / len(self.val_loader),
-            "val/accuracy": acc,
-            "val/f1_macro": f1_macro,
-            "val/f1_micro": f1_micro,
-            "epoch": self.cur_epoch
-        })
+        if self.cfg.log.wandb : 
+            wandb.log({
+                "val/loss": total_loss / len(self.val_loader),
+                "val/accuracy": acc,
+                "val/f1_macro": f1_macro,
+                "val/f1_micro": f1_micro,
+                "epoch": self.cur_epoch
+            })
         
 
         records = []
@@ -485,7 +491,7 @@ class BeatsTrainer:
 if __name__ == "__main__" :
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--configs", type=str, default="configs/classification_ESC-50.yaml")
+    parser.add_argument("--configs", type=str, default="configs/classification_Opus_ESC-50.yaml")
     parser.add_argument("--test_fold", type=int, default=None)
     parser.add_argument("--bitrate", type=float, default=None)
     args = parser.parse_args()
