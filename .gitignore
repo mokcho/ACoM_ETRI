@@ -3,7 +3,6 @@ __pycache__/
 *.pyc
 
 # Ignore data
-data/
 *.csv
 
 # Ignore logs
@@ -11,3 +10,5 @@ data/
 
 # Ignore VS Code settings
 .vscode/
+
+wandb/

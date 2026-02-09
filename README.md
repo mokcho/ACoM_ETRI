@@ -1,5 +1,5 @@
 # Audio Coding for Machines
-ETRI project led by Jinju Kim, Seungho Kwon
+ETRI project by Jinju Kim (project lead), Seungho Kwon
 
 Question : How can we adapt Audio Codecs for machine perception, rather than human perception for machine tasks?
 
@@ -18,14 +18,45 @@ Downstream Tasks
 
 ## Dataset
 
+To prepare datasets, simply use the following script.
+
+    ```bash
+    ./scripts/dataset.sh
+    ```
+
 1. Environment Sound Classification Dataset (ESC-50)
 
-    To train/eval on ESC-50 prepare your dataset from [ESC-50 Official repo](https://github.com/karolpiczak/ESC-50)
+    Prepare your dataset manually from [ESC-50 Official repo](https://github.com/karolpiczak/ESC-50)
 
 
 2. Sound Event Detection Dataset (DESED)
 
-    To train/eval on DESED prepare your dataset from [DCASE 2024 Official Website](https://dcase.community/challenge2024/task-sound-event-detection-with-heterogeneous-training-dataset-and-potentially-missing-labels)
+    Prepare your dataset manually from [DCASE 2024 Official Website](https://dcase.community/challenge2024/task-sound-event-detection-with-heterogeneous-training-dataset-and-potentially-missing-labels)
+
+## Codecs (WIP)
+
+1. EnCodec
+
+2. Opus 
+
+    ```bash
+    apt-get update && apt-get install -y libopus0 libopus-dev
+    ```
+
+## Audio Models (WIP)
+
+You can download both models using following script. Follow manual download below if you encounter any problems. If all fails - you could use huggingface instead of a downloaded checkpoint.
+
+    ```bash
+    ./scripts/audio.sh
+    ```
+
+1. BEATs
+
+    The original github repository provides multiple checkpoints of pretrained & finetuned versions of BEATs model.
+
+2. AST
+
 
 
 ## Training
@@ -39,6 +70,14 @@ Downstream Tasks
 
     ```bash
     python beats_trainer.py --configs $YOUR_CONFIG$ --fold $YOUR_FOLD$ --bitrate $YOUR_BITRATE$
+    ```
+
+- Training a Classifier
+
+currently runs with AST
+
+    ```bash
+    scripts/cls_train.sh
     ```
 
 2. Sound Event Detection (DESED)
