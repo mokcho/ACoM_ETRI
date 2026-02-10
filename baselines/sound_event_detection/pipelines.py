@@ -1,8 +1,12 @@
 import torch
 import torch.nn as nn
+import torchaudio
+import torch.nn.functional as F
 
 from baselines.beats.BEATs import BEATs, BEATsConfig
 from baselines.beats.Tokenizers import TokenizersConfig, Tokenizers
+
+from baselines.ast.src.models.ast_models import ASTModel
 from encodec.model import EncodecModel
 
 # class PostEncodecEnhancerSConv(nn.Module): 
@@ -46,19 +50,49 @@ class BaseEventDetector(nn.Module):
         self.mode = mode  # 'strong' or 'weak'
         self.num_classes = num_classes
 
-        checkpoint = torch.load('/data/BEATs/BEATs_iter3_plus_AS20K_finetuned_on_AS2M_cpt1.pt')
-        checkpoint['cfg']['finetuned_model'] = False
-        cfg = BEATsConfig(checkpoint['cfg'])
+        if self.cfg.baseline.model.lower() == 'beats':
+            checkpoint = torch.load('/data/BEATs/BEATs_iter3_plus_AS20K_finetuned_on_AS2M_cpt1.pt')
+            checkpoint['cfg']['finetuned_model'] = False
+            cfg = BEATsConfig(checkpoint['cfg'])
 
-        self.baseline = BEATs(cfg)
-        self.baseline.load_state_dict(checkpoint['model'], strict = False)
+            self.baseline = BEATs(cfg)
+            self.baseline.load_state_dict(checkpoint['model'], strict = False)
+            
+            self.embed_dim = cfg.encoder_embed_dim
+        
+        elif self.cfg.baseline.model.lower() == 'ast': 
+            
+            # Mel-spectrogram transform (AST uses this)
+            self.mel_trans = torchaudio.transforms.MelSpectrogram(
+                sample_rate=16000,
+                n_fft=1024,
+                hop_length=160,
+                n_mels=128,
+                center=True,        # ← Important!
+                pad_mode='reflect'  # ← Default, but explicit
+            )
+            
+            # Initialize AST model
+            self.baseline = ASTModel(
+                label_dim=527,
+                input_tdim=1214,  # ← ESC-50 uses 512, not 1024!
+                input_fdim=128,
+                fstride=10,
+                tstride=10,
+                audioset_pretrain=True  # ← Loads AudioSet, auto-resizes pos_embed
+            )
+            
+            #Remove AST built in classifier
+            self.baseline.mlp_head = nn.Identity() 
+            
+            self.embed_dim = 768  # AST uses ViT-Base which has 768-dim embeddings
+            
         
         # Freeze BEATs if needed
         for param in self.baseline.parameters():
             param.requires_grad = False
         
-        # Get embedding dimension from BEATs
-        self.embed_dim = cfg.encoder_embed_dim
+        # Get embedding dimension from BEAT
         
         # Event detection head
         # if mode == 'strong':
@@ -72,6 +106,7 @@ class BaseEventDetector(nn.Module):
         # )
         # else:  # weak
             # Clip-level prediction head with temporal pooling
+        
         self.detection_head = nn.Sequential(
             nn.LayerNorm(self.embed_dim),
             nn.Linear(self.embed_dim, 512),
@@ -94,20 +129,50 @@ class BaseEventDetector(nn.Module):
         if audio.dim() == 3:
             audio = audio.squeeze(1)
         
-        # Extract BEATs features
-        with torch.set_grad_enabled(not eval_mode or self.cfg.baseline.get('finetune_beats', False)):
-            features = self.baseline.extract_features(audio)[0]  # [B, T_frames, D]
+        processed_input = audio
+            
+        if self.cfg.baseline.model.lower() == 'beats':
+            
+        
+            # Extract BEATs features
+            with torch.set_grad_enabled(not eval_mode or self.cfg.baseline.get('finetune_beats', False)):
+                features = self.baseline.extract_features(audio)[0]  # [B, T_frames, D]
+                
+            features = torch.mean(features, dim=1)
+        
+        elif self.cfg.baseline.model.lower() == 'ast':
+            # Debug: print actual audio length
+            # print(f"Input audio shape: {audio.shape}")
+            
+            target_length = 194240  # For 1024 frames
+            if audio.shape[-1] < target_length:
+                audio = F.pad(audio, (0, target_length - audio.shape[-1]))
+            else:
+                audio = audio[:, :target_length]
+            
+            # print(f"After padding: {audio.shape}")
+            
+            # Mel-spectrogram
+            mel = self.mel_trans(audio)
+            # print(f"Mel shape: {mel.shape}")  # Check actual frames produced
+            
+            log_mel = (mel + 1e-6).log()
+            log_mel = (log_mel + 4.2677393) / 4.5689974
+            log_mel = log_mel.transpose(1, 2)
+            
+            # print(f"Log-mel shape before AST: {log_mel.shape}") #1214 128
+            
+            features = self.baseline(log_mel) #1214 768
+            
         
         # Detection head
         if self.mode == 'strong':
             raise NotImplementedError # Frame-level predictions
             logits = self.detection_head(features)  # [B, T_frames, C]
         else:  # weak
-            # Temporal pooling then prediction
-            pooled = torch.mean(features, dim=1)  # [B, D]
-            logits = self.detection_head(pooled)  # [B, C]
+            logits = self.detection_head(features)
         
-        return logits, audio, features, features
+        return logits, processed_input, features, features
 
 class EnCodecEventDetector(BaseEventDetector):
     def __init__(self, cfgs, num_classes, mode='weak'):

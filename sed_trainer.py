@@ -9,6 +9,7 @@ import numpy as np
 import random
 import pandas as pd
 import os
+import re
 
 from omegaconf import OmegaConf
 
@@ -44,6 +45,9 @@ class BeatsSEDTrainer:
         torch.backends.cudnn.benchmark = False
         
         self.data_dir = cfg.data_dir
+        
+        self.data_dir = re.sub(r'[\d.]+kbps', f'{cfg.baseline.bitrate}kbps', self.data_dir)
+        
         self.cfg = cfg
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
@@ -156,7 +160,6 @@ class BeatsSEDTrainer:
         
         # Create datasets
         self.train_dataset = StronglyAnnotatedSet(
-            #audio_folder= self.data_dir, #Path(self.data_dir) / "strong_label_real",
             audio_folder= Path(self.data_dir) / "strong_label_real",
             tsv_entries=train_tsv,
             encoder=self.encoder,
@@ -173,10 +176,10 @@ class BeatsSEDTrainer:
         #     fs=self.cfg.data.fs,
         #     return_filename=True
         # )
-        
+        print(f"evaluation from {self.data_dir}")
         self.val_dataset = StronglyAnnotatedSet(
-            # audio_folder= self.data_dir, #Path(self.data_dir.replace("train", "eval")) / "strong_label_real",
-            audio_folder= Path(self.data_dir.replace("train", "eval")) / "strong_label_real",
+            audio_folder= self.data_dir, #Path(self.data_dir.replace("train", "eval")) / "strong_label_real",
+            # audio_folder= Path(self.data_dir.replace("train", "eval")) / "strong_label_real",
             tsv_entries=val_tsv,
             encoder=self.encoder,
             pad_to=self.cfg.data.audio_max_len,
@@ -589,6 +592,7 @@ if __name__ == "__main__":
     parser.add_argument("--configs", type=str, default="configs/detection_AudioSet.yaml")
     parser.add_argument("--bitrate", type=float, default=None)
     parser.add_argument("--load_ckpt", type=str, default=None)
+    parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args()
     
     cfg = OmegaConf.load(args.configs)
@@ -597,6 +601,15 @@ if __name__ == "__main__":
     if args.bitrate is not None :
         cfg.baseline.bitrate = args.bitrate
         
+    if args.seed is not None :
+        cfg.seed = args.seed
+        cfg.baseline.load_pretrained = os.path.join(
+            "/".join(cfg.baseline.load_pretrained.split("/")[:-1]),  # join list back to string
+            f'seed_{cfg.seed}',
+            cfg.baseline.load_pretrained.split("/")[-1]
+        )
+        cfg.checkpoint_dir += f'/seed_{cfg.seed}'
+        
     # if args.load_ckpt is not None :
     #     cfg.baseline.load_pretrained = args.load_ckpt
     
@@ -604,4 +617,4 @@ if __name__ == "__main__":
     
     # Train
     trainer.evaluate()
-    trainer.train()
+    # trainer.train()

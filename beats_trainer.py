@@ -5,6 +5,7 @@ import os
 import wandb
 import numpy as np
 import random
+import re
 
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
@@ -28,6 +29,10 @@ class BeatsTrainer:
         torch.backends.cudnn.benchmark = False
         
         self.data_dir = cfg.data_dir
+        self.data_dir = re.sub(r'fold_\d+', f'fold_{cfg.data.test_fold}', self.data_dir)
+        self.data_dir = re.sub(r'kbps_[\d.]+', f'kbps_{cfg.baseline.bitrate}', self.data_dir)
+    
+        
         self.cfg = cfg
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
@@ -492,7 +497,7 @@ if __name__ == "__main__" :
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--configs", type=str, default="configs/classification_Opus_ESC-50.yaml")
-    parser.add_argument("--test_fold", type=int, default=None)
+    parser.add_argument("--test_fold", type=int, default=None, required=True )
     parser.add_argument("--bitrate", type=float, default=None)
     args = parser.parse_args()
     
