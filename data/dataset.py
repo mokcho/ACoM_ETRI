@@ -192,6 +192,72 @@ class ESCDataset(Dataset):
             raise ValueError(f"Label not found for file: {filename}")
         
         return label_series.iloc[0]  # return string
+
+class UrbanSound8KDataset(Dataset):
+    def __init__(self,root_dir, annotation_dir, label2id = None, sample_rate=16000, test_fold=1, train=True):
+        self.root_dir = root_dir
+        self.sample_rate = sample_rate
+        self.annotation = self.open_annotation(annotation_dir)
+        self.annotation = self.get_fold_split(test_fold=test_fold, train=train)
+                
+        if label2id is not None:
+            self.label2id = label2id
+        else:
+            unique_labels = sorted(self.annotation['class'].unique())
+            self.label2id = {label: idx for idx, label in enumerate(unique_labels)}
+            
+        self.id2label = {idx: label for label, idx in self.label2id.items()}
+    
+    def __len__(self):
+        return len(self.annotation)
+    
+    def __getitem__(self, idx) :
+        try :
+            row = self.annotation.iloc[idx]
+            path = os.path.join(self.root_dir, f"fold{row['fold']}", row['slice_file_name'])
+            waveform, sr = torchaudio.load(path)
+
+        except Exception as e :
+            print("No File at", path)
+            new_idx = torch.randint(0, self.__len__(), (1,)).item()
+            return self.__getitem__(new_idx)
+        
+        if sr != self.sample_rate:
+            waveform = torchaudio.functional.resample(waveform, sr, self.sample_rate)
+        
+        if waveform.shape[0] > 1: # Mono conversion
+            waveform = waveform.mean(0, keepdim=True)
+
+        label = self.get_label(path)
+        label_id = self.label2id[label]  # convert to integer
+        
+        output = {
+            'audio' : waveform,
+            'filename' : row['classID'],
+            'label' : label_id
+        }
+        return output
+    
+    def open_annotation(self, annotation_dir):
+        df = pd.read_csv(annotation_dir)
+        return df
+    
+    def get_fold_split(self, test_fold=1, train=True):
+        df = self.annotation
+        if train : 
+            out_df = df[df['fold'] != test_fold].reset_index(drop=True)
+        else : 
+            out_df = df[df['fold'] == test_fold].reset_index(drop=True)
+        return out_df
+
+    
+    def get_label(self, path):
+        filename = os.path.basename(path)
+        label_series = self.annotation.loc[self.annotation['slice_file_name'] == filename, 'class']        
+        if label_series.empty:
+            raise ValueError(f"Label not found for file: {filename}")
+        
+        return label_series.iloc[0]  # return string
     
 class StronglyAnnotatedSet(Dataset):
     def __init__(
