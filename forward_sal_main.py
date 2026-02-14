@@ -16,9 +16,8 @@ import torchaudio.functional as AF
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 
-
 from baselines.sound_classification.pipelines import BaseClassifier
-from data import ESCDataset, collate_fn_multi_class
+from data import ESCDataset, collate_fn_multi_class, UrbanSound8KDataset
 
 
 from baselines.sound_event_detection.pipelines import BaseEventDetector, EnCodecEventDetector, FilterEventDetector
@@ -85,6 +84,8 @@ class AudioProcessor:
         
         if self.dataset_type == 'esc50':
             self._init_esc50(test_fold)
+        elif self.dataset_type == 'urbansound8k':
+            self._init_urbansound8k(test_fold)
         elif self.dataset_type == 'audioset':
             self._init_audioset()
         else:
@@ -108,6 +109,8 @@ class AudioProcessor:
     def _detect_dataset_type(self):
         if 'ESC-50' in self.cfgs.data_dir:
             return 'esc50'
+        elif 'urbansound8k' in self.cfgs.data_dir.lower():
+            return 'urbansound8k'
         elif 'dcase' in self.cfgs.data_dir or 'audioset' in self.cfgs.annotation_dir.lower() or hasattr(self.cfgs, 'mode'):
             return 'audioset'
         else:
@@ -157,7 +160,61 @@ class AudioProcessor:
         if self.model_type == 'beats':
             self.hook_module = self.pipeline.baseline.layer_norm
             self.beats_cfg = self.pipeline.baseline.cfg
-    
+
+    def _init_urbansound8k(self, test_fold):
+        self.sr = self.cfgs.data.sr
+        self.num_classes = 10
+        
+        self.dataset = UrbanSound8KDataset(
+            root_dir=self.cfgs.data_dir,
+            annotation_dir=self.cfgs.annotation_dir,
+            sample_rate=self.sr,
+            test_fold=test_fold,
+            train=False
+        )
+        
+        self.dataloader = DataLoader(
+            dataset=self.dataset,
+            batch_size=self.cfgs.train.batch_size,
+            shuffle=False,
+            num_workers=self.cfgs.train.num_workers,
+            collate_fn=collate_fn_multi_class
+        )
+        
+        self.pipeline = BaseClassifier(
+            cfgs=self.cfgs, 
+            label2id=self.dataset.label2id
+        ).to(self.device)
+        
+        path = self.cfgs.baseline.load_pretrained
+        
+        # path가 False가 아니고 실제 문자열 경로가 들어왔을 때만 로드
+        if path and isinstance(path, str):
+            if path.endswith('.pt'):
+                load_path = path
+            else:
+                # 폴더 경로일 경우 해당 폴드의 latest.pt 지정
+                load_path = os.path.join(path, f"fold_{test_fold}", "latest.pt")
+            
+            if os.path.exists(load_path):
+                logging.info(f"Loading weights from: {load_path}")
+                checkpoint = torch.load(load_path, map_location=self.device, weights_only=False)
+                self.pipeline.load_state_dict(checkpoint['model_state_dict'], strict=False)
+            else:
+                logging.warning(f"Weight file not found at {load_path}. Skipping load.")
+        else:
+            logging.info("No pretrained path string provided. Starting from scratch or base model.")
+
+        checkpoint = torch.load(load_path, map_location=self.device, weights_only=False)
+        
+        
+        self.pipeline.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        self.pipeline.eval()
+        
+        if self.model_type == 'beats':
+            self.hook_module = self.pipeline.baseline.layer_norm
+            self.beats_cfg = self.pipeline.baseline.cfg
+            
     def _init_audioset(self):
         self.sr = self.cfgs.data.sr
         
@@ -538,10 +595,15 @@ def process_fold_kbps(processor, saliency_filter, output_dir, step, fold_or_spli
             y_true_clip = to_clip_labels(y_true, processor.num_classes)
             filenames = batch_data[3] if len(batch_data) > 3 else None
             lengths = torch.full((x_orig.shape[0],), x_orig.shape[-1], device=DEVICE, dtype=torch.long)
-        else:  # ESC-50
+
+        else:  # ESC-50 or UrbanSound8K
             y_true_clip = y_true
-            lengths = batch_data[2].to(DEVICE)
-            filenames = batch_data[3] if len(batch_data) > 3 else None
+            if isinstance(batch_data[2], list): # UrbanSound8K
+                filenames = batch_data[2]
+                lengths = torch.full((x_orig.shape[0],), x_orig.shape[-1], device=DEVICE, dtype=torch.long)
+            else: # ESC-50 
+                lengths = batch_data[2].to(DEVICE)
+                filenames = batch_data[3] if len(batch_data) > 3 else None
         
         B = x_orig.shape[0]
         
@@ -605,10 +667,17 @@ def process_fold_kbps(processor, saliency_filter, output_dir, step, fold_or_spli
                         'ratio': f'{k/F_bins:.2f}'
                     })
             
-            if filenames:
+            #if filenames:
+            #    filename = os.path.basename(filenames[i])
+            #else:
+            #    filename = f"sample_{i}.wav"
+
+            if filenames and i < len(filenames) and isinstance(filenames[i], str):
                 filename = os.path.basename(filenames[i])
+                if not filename.endswith('.wav'):
+                    filename = filename + '.wav'
             else:
-                filename = f"sample_{i}.wav"
+                filename = f"batch_sample_{i}.wav"
                 
             save_path = os.path.join(output_dir, filename)
             torchaudio.save(save_path, best_wav.unsqueeze(0), processor.sr)
@@ -657,6 +726,35 @@ def main():
     if 'ESC-50' in cfg.data_dir:
         folds = args.folds if args.folds else [1, 2, 3, 4, 5]
         
+        for fold in folds:
+            logging.info(f"\n{'='*50}")
+            logging.info(f"Processing Fold {fold} [{model_type.upper()}]")
+            logging.info(f"{'='*50}")
+            
+            processor = AudioProcessor(cfgs=cfg, test_fold=fold)
+            saliency_filter = FeatureOnlyFilter(processor)
+            
+            for kbps in args.kbps_list:
+                fold_kbps_dir = os.path.join(args.output_dir, args.codec, f"fold_{fold}", f"{kbps}kbps")
+                os.makedirs(fold_kbps_dir, exist_ok=True)
+                
+                fold_results = process_fold_kbps(
+                    processor=processor,
+                    saliency_filter=saliency_filter,
+                    output_dir=fold_kbps_dir,
+                    step=cfg.prune_step,
+                    fold_or_split=f"fold_{fold}",
+                    kbps=kbps,
+                    codec=args.codec
+                )
+                all_results.extend(fold_results)
+            
+            del processor, saliency_filter
+            torch.cuda.empty_cache()
+
+    elif 'urbansound8k' in cfg.data_dir.lower():
+        folds = args.folds if args.folds else [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
         for fold in folds:
             logging.info(f"\n{'='*50}")
             logging.info(f"Processing Fold {fold} [{model_type.upper()}]")

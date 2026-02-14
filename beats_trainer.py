@@ -76,6 +76,30 @@ class BeatsTrainer:
             
             self.criterion = nn.CrossEntropyLoss()
         
+        elif 'urbansound8k' in cfg.data_dir.lower() :
+            self.cfg.train_classifier = True
+            
+            self.train_dataset = UrbanSound8KDataset(
+                root_dir=self.data_dir,
+                annotation_dir=self.cfg.annotation_dir,
+                sample_rate=self.cfg.data.sr,
+                test_fold=self.cfg.data.test_fold,
+                train=True
+            )
+            
+            self.eval_dataset = UrbanSound8KDataset(
+                root_dir=self.data_dir,
+                annotation_dir=self.cfg.annotation_dir,
+                sample_rate=self.cfg.data.sr,
+                test_fold=self.cfg.data.test_fold,
+                label2id=self.train_dataset.label2id,
+                train=False
+            )
+            
+            self.train_mode = "multi-class"
+            collate_fn = collate_fn_multi_class
+            self.criterion = nn.CrossEntropyLoss()
+        
         else :
             print("DATASET NOT SUPPORTED")
             
