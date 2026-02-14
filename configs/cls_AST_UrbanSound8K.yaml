@@ -1,8 +1,8 @@
-data_dir : "/data/UrbanSound8k/audio" # directory to the audio file dataset (경로에 반드시 'UrbanSound8k' 또는 'urbansound8k' 포함)
-annotation_dir : "/data/UrbanSound8k/metadata/UrbanSound8K.csv" # directory to the audio file annotation 
-save_model_dir : "/data/ckpts/UrbanSound8k/baseline_16K/" # directory to save your model
-save_wav_dir : "/data/UrbanSound8k/baseline_16K/" # directory to save filtered audio
-load_model_dir : "/data/ckpts/UrbanSound8k/baseline_16K/" # directory to load the baseline model from 
+data_dir : "/data/UrbanSound8k/audio" # directory to the audio file dataset
+annotation_dir : "/data/UrbanSound8k/metadata/UrbanSound8K.csv"
+save_model_dir : "/data/ckpts/UrbanSound8k/AST_baseline_16K/" # directory to save your model
+save_wav_dir : "/data/UrbanSound8k/AST_baseline_16K/" # directory to save filtered audio
+load_model_dir : "/data/ckpts/UrbanSound8k/AST_baseline_16K/" # directory to load the baseline model from 
 seed : 42
 
 mode : train # choose from ['train', 'eval_only', 'sample']
@@ -12,7 +12,7 @@ filters : False # setting this as true will train only the filters
 return_wav : False # TODO:fix this for classification training
 
 baseline : 
-  model : beats
+  model : ast
   load_pretrained : False # load pretrained classifier weights
   freeze_baseline : True # do not change this unless you want to train BEATs baseline model!
   freeze_encodec : True # do not change this unless you want to train encodec !
@@ -22,14 +22,13 @@ baseline :
 train :
   epochs : 10
   batch_size : 48
-  learning_rate : 3e-5
+  learning_rate : 1e-4
   num_workers : 64
 
 data :
   sr : 16000
-  test_fold : 1 # UrbanSound8k는 1~10까지의 fold를 사용하므로 설정해두는 것이 좋습니다.
   augmentation : False
 
 log : 
   wandb : True # if you want to log via wandb, login to wandb before setting this True
-  process_name : US8K-baseline_16K
+  process_name : ESC50-baseline_16K
