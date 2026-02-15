@@ -439,9 +439,9 @@ class BeatsTrainer:
         print(f"Loading pretrained model from {path}")
         
         if path.endswith('.pt') :
-            checkpoint = torch.load(path, map_location=self.device)
+            checkpoint = torch.load(path, map_location=self.device, weights_only=False)
         else :
-            checkpoint = torch.load(os.path.join(path, f"fold_{self.cfg.data.test_fold}", "latest.pt"), map_location=self.device)
+            checkpoint = torch.load(os.path.join(path, f"fold_{self.cfg.data.test_fold}", "latest.pt"), map_location=self.device, weights_only=False)
         
         self.pipeline.load_state_dict(checkpoint['model_state_dict'], strict=False)
     
