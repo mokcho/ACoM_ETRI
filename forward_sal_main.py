@@ -175,9 +175,9 @@ class AudioProcessor:
         
         self.dataloader = DataLoader(
             dataset=self.dataset,
-            batch_size=self.cfgs.train.batch_size,
+            batch_size=self.cfgs.batch_size,
             shuffle=False,
-            num_workers=self.cfgs.train.num_workers,
+            num_workers=self.cfgs.num_workers,
             collate_fn=collate_fn_multi_class
         )
         
@@ -188,12 +188,10 @@ class AudioProcessor:
         
         path = self.cfgs.baseline.load_pretrained
         
-        # path가 False가 아니고 실제 문자열 경로가 들어왔을 때만 로드
         if path and isinstance(path, str):
             if path.endswith('.pt'):
                 load_path = path
             else:
-                # 폴더 경로일 경우 해당 폴드의 latest.pt 지정
                 load_path = os.path.join(path, f"fold_{test_fold}", "latest.pt")
             
             if os.path.exists(load_path):
@@ -203,12 +201,8 @@ class AudioProcessor:
             else:
                 logging.warning(f"Weight file not found at {load_path}. Skipping load.")
         else:
-            logging.info("No pretrained path string provided. Starting from scratch or base model.")
-
-        checkpoint = torch.load(load_path, map_location=self.device, weights_only=False)
+            raise ValueError("A pretrained model path must be provided.")
         
-        
-        self.pipeline.load_state_dict(checkpoint['model_state_dict'], strict=False)
         self.pipeline.eval()
         
         if self.model_type == 'beats':
@@ -584,6 +578,8 @@ def process_fold_kbps(processor, saliency_filter, output_dir, step, fold_or_spli
             logging.info(f"Batch length: {len(batch_data)}")
             if len(batch_data) > 3:
                 logging.info(f"Filenames found: {batch_data[3][0] if batch_data[3] else 'None'}")
+            elif isinstance(batch_data[2], list) and batch_data[2] and isinstance(batch_data[2][0], str):
+                logging.info(f"Filenames found: {batch_data[2][0]}")
             else:
                 logging.warning("Filenames NOT in batch! Files will be saved as sample_N.wav")
             first_batch = False
@@ -735,7 +731,7 @@ def main():
             saliency_filter = FeatureOnlyFilter(processor)
             
             for kbps in args.kbps_list:
-                fold_kbps_dir = os.path.join(args.output_dir, args.codec, f"fold_{fold}", f"{kbps}kbps")
+                fold_kbps_dir = os.path.join(args.output_dir, args.codec, f"fold_{fold}", f"kbps_{kbps}")
                 os.makedirs(fold_kbps_dir, exist_ok=True)
                 
                 fold_results = process_fold_kbps(
@@ -764,7 +760,7 @@ def main():
             saliency_filter = FeatureOnlyFilter(processor)
             
             for kbps in args.kbps_list:
-                fold_kbps_dir = os.path.join(args.output_dir, args.codec, f"fold_{fold}", f"{kbps}kbps")
+                fold_kbps_dir = os.path.join(args.output_dir, args.codec, f"fold_{fold}", f"kbps_{kbps}")
                 os.makedirs(fold_kbps_dir, exist_ok=True)
                 
                 fold_results = process_fold_kbps(
