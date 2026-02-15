@@ -1,0 +1,26 @@
+data_dir : "/data/UrbanSound8k/audio" # directory to the audio file dataset
+annotation_dir : "/data/UrbanSound8k/metadata/UrbanSound8K.csv" # directory to the audio file annotation 
+save_wav_dir : "/data/UrbanSound8k/AST_baseline_16K/" # directory to save filtered audio
+load_model_dir : "/data/ckpts/UrbanSound8k/AST_baseline_16K/" # directory to load the baseline model from 
+seed : 42
+
+train_classifier : True # setting this as true will load the classifier layers, unfreeze with ' baseline.freeze_classifier : False '
+
+baseline : 
+  model : ast
+  load_pretrained : "/data/ckpts/UrbanSound8k/AST_baseline_16K/" # load pretrained classifier weights
+  freeze_baseline : True # do not change this unless you want to train BEATs baseline model!
+  freeze_encodec : True # do not change this unless you want to train encodec !
+  freeze_classifier : True # do not change this unless you want to train the classifiers!
+  bitrate : 6
+
+batch_size : 4
+num_workers : 64
+prune_step : 10
+
+data :
+  augmentation : False
+  sr : 16000
+  n_fft : 1024
+  hop : 256
+
