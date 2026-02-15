@@ -151,7 +151,7 @@ class ESCDataset(Dataset):
                     
                 
         except Exception as e :
-            print("No File at", path)
+            print("Error processing", path)
             new_idx = torch.randint(0, self.__len__(), (1,)).item()
             return self.__getitem__(new_idx)
         
@@ -214,11 +214,14 @@ class UrbanSound8KDataset(Dataset):
     def __getitem__(self, idx) :
         try :
             row = self.annotation.iloc[idx]
-            path = os.path.join(self.root_dir, f"fold{row['fold']}", row['slice_file_name'])
+            if 'fold' in self.root_dir :
+                path = os.path.join(self.root_dir, row['slice_file_name'])
+            else: 
+                path = os.path.join(self.root_dir, f"fold{row['fold']}", row['slice_file_name'])
             waveform, sr = torchaudio.load(path)
 
         except Exception as e :
-            print("No File at", path)
+            print(f"{e} - Error processing", path)
             new_idx = torch.randint(0, self.__len__(), (1,)).item()
             return self.__getitem__(new_idx)
         
