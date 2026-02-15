@@ -236,7 +236,7 @@ class UrbanSound8KDataset(Dataset):
         
         output = {
             'audio' : waveform,
-            'filename' : row['classID'],
+            'filename' : row['slice_file_name'],
             'label' : label_id
         }
         return output
