@@ -1,0 +1,7 @@
+epochs: 10           # 총 학습 횟수 (예: 50)
+batch_size: 64       # 한 번에 학습할 데이터 개수 (GPU 메모리 부족하면 8이나 4로 줄이세요)
+lr: 0.0001           # 학습률 (Learning Rate, 보통 1e-4 사용)
+
+ckpt_path: "/workspace/etri/checkpoints/BEATs_iter3_plus_AS2M.pt"
+data_root: ""
+meta_csv: ""

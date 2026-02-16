@@ -1,0 +1,12 @@
+# configs/train.yaml
+
+# 모델 설정
+ckpt_path: "/workspace/etri/checkpoints/BEATs_iter3_plus_AS20K_finetuned_on_AS2M_cpt1.pt"
+
+# 학습 하이퍼파라미터
+batch_size: 32
+lr: 1.0e-4        # BEATs/AST는 보통 1e-4 ~ 1e-5 사용
+epochs: 50
+num_workers: 4
+weight_decay: 0.05
+save_dir: "./checkpoints"
