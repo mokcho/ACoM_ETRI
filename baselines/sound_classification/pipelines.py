@@ -217,23 +217,26 @@ class EnCodecClassifier(BaseClassifier) :
                 param.requires_grad=False
         
     def forward(self, x, use_post_filter=True, eval_mode=False):
-
-
-        x = self.encodec(x) #input should be [B, 1, T]
-        return super().forward(x, padding_mask=None, eval_mode=eval_mode)
-        # x = x.squeeze(1) # [B, T]
-
-        # features = self.baseline.extract_features(x, padding_mask=None)[0]  # [B, T, D]
-
-        # if self.cfgs.train_classifier:
-        #     logits = self.classifier(features)   # [B, T, C]
-        #     logits = logits.mean(dim=1)         # [B, C]
-            
-
-        #     return logits, x, features, None
+        # 1. 16kHz -> 24kHz 리샘플링 (EnCodec 모델 규격에 맞춤)
+        x_24k = torchaudio.functional.resample(x, 16000, 24000)
         
-        # else:
-        #     return features, x
+        # 2. EnCodec 모델 모드 설정 및 압축
+        if eval_mode:
+            self.encodec.eval()  # 코덱을 반드시 평가 모드로
+            with torch.no_grad():
+                x_recon_24k = self.encodec(x_24k)
+        else:
+            x_recon_24k = self.encodec(x_24k)
+
+        # 3. 24kHz -> 16kHz 리샘플링 (BEATs/AST 모델 규격에 맞춤)
+        x_16k = torchaudio.functional.resample(x_recon_24k, 24000, 16000)
+        
+        # 4. 길이를 원본과 맞춤 (리샘플링 시 발생하는 미세한 길이 차이 제거)
+        if x_16k.shape[-1] != x.shape[-1]:
+            x_16k = x_16k[..., :x.shape[-1]]
+
+        # 5. BEATs/AST의 forward 호출
+        return super().forward(x_16k, padding_mask=None, eval_mode=eval_mode)
 
 class FilterClassifier(EnCodecClassifier) :
     
