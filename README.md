@@ -1,13 +1,14 @@
 # Audio Coding for Machines
 Question : How can we adapt Audio Codecs for machine perception, rather than human perception for machine tasks?
 
+Note: Link to Masked Dataset will be unavailable during double-anonymity duration of paper review.
+
 ## To-Do's
 Methods
 - [x] implement naiive filtering layers
 - [x] implement frame-wise ROI pre-filtering
 - [x] implement frequency-wise ROI pre-filtering
-- [ ] save best-mask results as axis, percentage, region (frames, freqs)
-- [ ] train lightweight neural network for prediction
+- [x] save best-mask results as axis, percentage, region (frames, freqs)
       
 Downstream Tasks
 - [x] ESC-50
@@ -31,9 +32,11 @@ To prepare datasets, simply use the following script.
 
     Prepare your dataset manually from [DCASE 2024 Official Website](https://dcase.community/challenge2024/task-sound-event-detection-with-heterogeneous-training-dataset-and-potentially-missing-labels)
 
-## Codecs (WIP)
+## Codecs 
 
 1. EnCodec
+
+    implemented within code
 
 2. Opus 
 
@@ -48,12 +51,6 @@ You can download both models using following script. Follow manual download belo
     ```bash
     ./scripts/audio.sh
     ```
-
-1. BEATs
-
-    The original github repository provides multiple checkpoints of pretrained & finetuned versions of BEATs model.
-
-2. AST
 
 
 
@@ -70,16 +67,11 @@ You can download both models using following script. Follow manual download belo
     python beats_trainer.py --configs $YOUR_CONFIG$ --fold $YOUR_FOLD$ --bitrate $YOUR_BITRATE$
     ```
 
-- Training a Classifier
-
-currently runs with AST
-
-    ```bash
-    scripts/cls_train.sh
-    ```
 
 2. Sound Event Detection (DESED)
 
-    T.B.D
+    ```bash
+    python sed_trainer.py --configs $YOUR_CONFIG$ --fold $YOUR_FOLD$ --bitrate $YOUR_BITRATE$
+    ```
 
 

@@ -146,11 +146,12 @@ class AudioProcessor:
         logging.info(f"Loading ESC-50 {self.model_type.upper()} model from fold {test_fold}")
         
         if path.endswith('.pt'):
-            checkpoint = torch.load(path, map_location=self.device)
+            checkpoint = torch.load(path, map_location=self.device, weights_only=False)
         else:
             checkpoint = torch.load(
                 os.path.join(path, f"fold_{test_fold}", "latest.pt"), 
-                map_location=self.device
+                map_location=self.device,
+                weights_only=False
             )
         
         self.pipeline.load_state_dict(checkpoint['model_state_dict'], strict=False)
@@ -196,7 +197,7 @@ class AudioProcessor:
             
             if os.path.exists(load_path):
                 logging.info(f"Loading weights from: {load_path}")
-                checkpoint = torch.load(load_path, map_location=self.device, weights_only=False)
+                checkpoint = torch.load(load_path, map_location=self.device, weights_only=True)
                 self.pipeline.load_state_dict(checkpoint['model_state_dict'], strict=False)
             else:
                 logging.warning(f"Weight file not found at {load_path}. Skipping load.")
@@ -370,16 +371,21 @@ class FeatureOnlyFilter:
     # BEATs: activation magnitude from layer_norm (original approach)
     # ------------------------------------------------------------------ #
     def _beats_saliency(self, wav_batch):
+        # BEATs needs at least 16 fbank frames → ~0.2s → ~3200 samples at 16kHz
+        min_samples = 16000 // 5  # 3200 samples, conservative minimum
+        if wav_batch.shape[-1] < min_samples:
+            wav_batch = F.pad(wav_batch, (0, min_samples - wav_batch.shape[-1]))
+
         with torch.no_grad():
             S_orig = self.processor.stft(wav_batch)
-        
+
         feat = None
         def hook(m, i, o):
             nonlocal feat
             feat = o.detach()
-        
+
         handle = self.processor.hook_module.register_forward_hook(hook)
-        with torch.no_grad(): 
+        with torch.no_grad():
             _ = self.processor.pipeline(wav_batch, padding_mask=None)
         handle.remove()
 
@@ -614,66 +620,76 @@ def process_fold_kbps(processor, saliency_filter, output_dir, step, fold_or_spli
         max_remove = int(F_bins * 0.5)
         
         for i in range(B):
-            best_score = -1e9
-            best_k = 0
-            best_wav = None
-            
-            for k in range(0, max_remove + 1, step):
-                mask = torch.ones((F_bins, 1), device=DEVICE)
-                if k > 0:
-                    sorted_idx = torch.argsort(freq_scores[i], descending=False)
-                    low_k_idx = sorted_idx[:k]
-                    mask[low_k_idx] = 0.0
+            try: 
+                best_score = -1e9
+                best_k = 0
+                best_wav = None
+                best_masked_bins = []
                 
-                S_masked = S_orig[i] * mask
-                wav = processor.istft(S_masked.unsqueeze(0), length=lengths[i])
-                wav_compressed = compress_fn(wav, kbps=kbps)
+                if filenames and i < len(filenames) and isinstance(filenames[i], str):
+                    filename = os.path.basename(filenames[i])
+                    if not filename.endswith('.wav'):
+                        filename = filename + '.wav'
+                else:
+                    filename = f"batch_sample_{i}.wav"
+                    
+                save_path = os.path.join(output_dir, filename)
                 
-                with torch.no_grad():
-                    output = processor.pipeline(wav_compressed, padding_mask=None)
+                if os.path.exists(save_path) :
+                    continue
+                
+                for k in range(0, max_remove + 1, step):
+                    mask = torch.ones((F_bins, 1), device=DEVICE)
+                    if k > 0:
+                        sorted_idx = torch.argsort(freq_scores[i], descending=False)
+                        low_k_idx = sorted_idx[:k]
+                        mask[low_k_idx] = 0.0
                     
-                    if isinstance(output, tuple):
-                        logits = output[0]
-                    else:
-                        logits = output
+                    S_masked = S_orig[i] * mask
+                    wav = processor.istft(S_masked.unsqueeze(0), length=lengths[i])
+                    wav_compressed = compress_fn(wav, kbps=kbps)
                     
-                    if processor.dataset_type == 'esc50':
-                        score = logits[0, y_true_clip[i]].item()
-                    else:  # audioset
-                        true_classes = y_true_clip[i].nonzero(as_tuple=True)[0]
-                        false_classes = (y_true_clip[i] == 0).nonzero(as_tuple=True)[0]
+                    with torch.no_grad():
+                        output = processor.pipeline(wav_compressed, padding_mask=None)
                         
-                        if len(true_classes) > 0 and len(false_classes) > 0:
-                            true_score = logits[0, true_classes].mean()
-                            false_score = logits[0, false_classes].mean()
-                            score = (true_score - false_score).item()
-                        elif len(true_classes) > 0:
-                            score = logits[0, true_classes].mean().item()
+                        if isinstance(output, tuple):
+                            logits = output[0]
                         else:
-                            score = logits[0].max().item()
-                
-                if score > best_score:
-                    best_score = score
-                    best_k = k
-                    best_wav = wav_compressed.squeeze().cpu()
+                            logits = output
+                        
+                        if processor.dataset_type in ('esc50', 'urbansound8k'):
+                            score = logits[0, y_true_clip[i]].item()
+                            
+                        elif processor.dataset_type in ('audioset'):
+                            true_classes = y_true_clip[i].nonzero(as_tuple=True)[0]
+                            false_classes = (y_true_clip[i] == 0).nonzero(as_tuple=True)[0]
+                            
+                            if len(true_classes) > 0 and len(false_classes) > 0:
+                                true_score = logits[0, true_classes].mean()
+                                false_score = logits[0, false_classes].mean()
+                                score = (true_score - false_score).item()
+                            elif len(true_classes) > 0:
+                                score = logits[0, true_classes].mean().item()
+                            else:
+                                score = logits[0].max().item()
+                        else :
+                            raise NotImplementedError
                     
-                    pbar.set_postfix({
-                        'best': f'{best_score:.3f}',
-                        'k': k,
-                        'ratio': f'{k/F_bins:.2f}'
-                    })
-            
-            #if filenames:
-            #    filename = os.path.basename(filenames[i])
-            #else:
-            #    filename = f"sample_{i}.wav"
-
-            if filenames and i < len(filenames) and isinstance(filenames[i], str):
-                filename = os.path.basename(filenames[i])
-                if not filename.endswith('.wav'):
-                    filename = filename + '.wav'
-            else:
-                filename = f"batch_sample_{i}.wav"
+                    if score > best_score:
+                        best_score = score
+                        best_k = k
+                        best_wav = wav_compressed.squeeze().cpu()
+                        best_masked_bins = sorted_idx[:k].cpu().tolist() if k > 0 else [] 
+                        
+                        pbar.set_postfix({
+                            'best': f'{best_score:.3f}',
+                            'k': k,
+                            'ratio': f'{k/F_bins:.2f}'
+                        })
+                
+            except :
+                print(f"skipping {save_path}")
+                continue
                 
             save_path = os.path.join(output_dir, filename)
             torchaudio.save(save_path, best_wav.unsqueeze(0), processor.sr)
@@ -686,6 +702,7 @@ def process_fold_kbps(processor, saliency_filter, output_dir, step, fold_or_spli
                 'model': processor.model_type,
                 'best_masked_ratio': best_k / F_bins,
                 'masked_freq_bins': best_k,
+                'masked_bin_indices': best_masked_bins,    # ← ADD THIS (list of ints)
                 'total_freq_bins': F_bins,
                 'score': best_score,
                 'dataset_type': processor.dataset_type
@@ -805,8 +822,16 @@ def main():
     
     # Save combined CSV
     df = pd.DataFrame(all_results)
-    csv_path = os.path.join(args.output_dir, args.codec, 'masking_results.csv')
-    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+    csv_path = os.path.join(args.output_dir, args.codec, 'masking_results_0222.csv')
+    
+    if os.path.exists(csv_path):
+        try:
+            df_existing = pd.read_csv(csv_path)
+            df = pd.concat([df_existing, df], ignore_index=True)
+            df = df.drop_duplicates(subset=['filename', 'fold_or_split', 'kbps', 'codec'], keep='last')
+        except pd.errors.EmptyDataError:
+            pass
+    
     df.to_csv(csv_path, index=False)
     
     logging.info(f"\n{'='*50}")

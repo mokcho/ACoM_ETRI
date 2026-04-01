@@ -578,9 +578,9 @@ class BeatsSEDTrainer:
         print(f"Loading pretrained model from {path}")
         
         if path.endswith('.pt') :
-            checkpoint = torch.load(path, map_location=self.device)
+            checkpoint = torch.load(path, map_location=self.device, weights_only=False)
         else :
-            checkpoint = torch.load(os.path.join(path, "latest.pt"), map_location=self.device)
+            checkpoint = torch.load(os.path.join(path, "latest.pt"), map_location=self.device, weights_only=False)
         
         self.model.load_state_dict(checkpoint['strong_model_state_dict'], strict=False)
     
@@ -593,6 +593,7 @@ if __name__ == "__main__":
     parser.add_argument("--bitrate", type=float, default=None)
     parser.add_argument("--load_ckpt", type=str, default=None)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--mask_axis", type=str, default=None)
     args = parser.parse_args()
     
     cfg = OmegaConf.load(args.configs)
@@ -603,15 +604,27 @@ if __name__ == "__main__":
         
     if args.seed is not None :
         cfg.seed = args.seed
-        cfg.baseline.load_pretrained = os.path.join(
-            "/".join(cfg.baseline.load_pretrained.split("/")[:-1]),  # join list back to string
-            f'seed_{cfg.seed}',
-            cfg.baseline.load_pretrained.split("/")[-1]
-        )
-        cfg.checkpoint_dir += f'/seed_{cfg.seed}'
+        
+        if args.seed != 42 :
+            cfg.baseline.load_pretrained = os.path.join(
+                "/".join(cfg.baseline.load_pretrained.split("/")[:-1]),  # join list back to string
+                f'seed_{cfg.seed}',
+                cfg.baseline.load_pretrained.split("/")[-1]
+            )
+            cfg.checkpoint_dir += f'/seed_{cfg.seed}'
         
     # if args.load_ckpt is not None :
     #     cfg.baseline.load_pretrained = args.load_ckpt
+    
+    if args.mask_axis is not None:
+        # Insert mask_axis after the codec directory
+        # e.g. .../opus/fold_1/kbps_6.0 → .../opus/time/fold_1/kbps_6.0
+        parts = cfg.data_dir.split('/')
+        for i, p in enumerate(parts):
+            if p in ('opus', 'encodec'):
+                parts.insert(i + 1, args.mask_axis)
+                break
+        cfg.data_dir = '/'.join(parts)
     
     trainer = BeatsSEDTrainer(cfg)
     

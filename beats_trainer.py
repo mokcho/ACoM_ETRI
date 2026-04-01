@@ -31,7 +31,9 @@ class BeatsTrainer:
         self.data_dir = cfg.data_dir
         self.data_dir = re.sub(r'fold_\d+', f'fold_{cfg.data.test_fold}', self.data_dir)
         self.data_dir = re.sub(r'kbps_[\d.]+', f'kbps_{cfg.baseline.bitrate}', self.data_dir)
-    
+        
+        
+        print(f"Data Dir : {self.data_dir}")
         
         self.cfg = cfg
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -436,13 +438,15 @@ class BeatsTrainer:
         print({f"{save_path}.pt is SAVED!!"})
 
     def load_pretrained(self, path):
-        print(f"Loading pretrained model from {path}")
         
         if path.endswith('.pt') :
             checkpoint = torch.load(path, map_location=self.device, weights_only=False)
         else :
-            checkpoint = torch.load(os.path.join(path, f"fold_{self.cfg.data.test_fold}", "latest.pt"), map_location=self.device, weights_only=False)
+            path = os.path.join(path, f"fold_{self.cfg.data.test_fold}", "latest.pt")
+            checkpoint = torch.load(path, map_location=self.device, weights_only=False)
         
+        
+        print(f"Loading pretrained model from {path}")
         self.pipeline.load_state_dict(checkpoint['model_state_dict'], strict=False)
     
     def load_checkpoint(self, path):
@@ -523,6 +527,7 @@ if __name__ == "__main__" :
     parser.add_argument("--configs", type=str, default="configs/classification_Opus_ESC-50.yaml")
     parser.add_argument("--test_fold", type=int, default=None, required=True )
     parser.add_argument("--bitrate", type=float, default=None)
+    parser.add_argument("--mask_axis", type=str, default=None)
     args = parser.parse_args()
     
     # predict the classification probability of each class
@@ -534,6 +539,17 @@ if __name__ == "__main__" :
     
     if args.bitrate is not None :
         cfg.baseline.bitrate = args.bitrate
+    
+    if args.mask_axis is not None:
+        # Insert mask_axis after the codec directory
+        # e.g. .../opus/fold_1/kbps_6.0 → .../opus/time/fold_1/kbps_6.0
+        parts = cfg.data_dir.split('/')
+        for i, p in enumerate(parts):
+            if p in ('opus', 'encodec'):
+                parts.insert(i + 1, args.mask_axis)
+                break
+        cfg.data_dir = '/'.join(parts)
+        cfg.mask_axis = args.mask_axis
     
     trainer = BeatsTrainer(cfg)
     
